@@ -43,6 +43,11 @@
 #if defined(__x86_64__)
 #  define AUDIT_ARCH_NR AUDIT_ARCH_X86_64
 #  define REG_SYSCALL   REG_RAX
+#  define M_CTX_SYSCALL gregs[REG_SYSCALL]
+#elif defined(__aarch64__)
+#  define AUDIT_ARCH_NR AUDIT_ARCH_AARCH64
+#  define REG_SYSCALL   8
+#  define M_CTX_SYSCALL regs[REG_SYSCALL]
 #else
 #  error "Platform does not support seccomp filtering yet - unsafe."
 #endif
@@ -65,7 +70,7 @@ static void handleSysSignal(int /* signal */,
 	if (info->si_code != SYS_SECCOMP || !uctx)
 		return;
 
-	unsigned int syscall = uctx->uc_mcontext.gregs[REG_SYSCALL];
+	unsigned int syscall = uctx->uc_mcontext.M_CTX_SYSCALL;
 
     Log::signalLogPrefix();
     Log::signalLog(" seccomp trapped signal, un-authorized sys-call: ");
@@ -111,9 +116,19 @@ bool lockdown(Type type)
         ACCEPT_SYSCALL(futex),
 
         // glibc's 'poll' has to answer for this lot:
+#ifdef __NR_epoll_wait
         ACCEPT_SYSCALL(epoll_wait),
+#endif
+#ifdef __NR_epoll_pwait
+        ACCEPT_SYSCALL(epoll_pwait),
+#endif
         ACCEPT_SYSCALL(epoll_ctl),
+#ifdef __NR_epoll_create
         ACCEPT_SYSCALL(epoll_create),
+#endif
+#ifdef __NR_epoll_create
+        ACCEPT_SYSCALL(epoll_create1),
+#endif
         ACCEPT_SYSCALL(close),
         ACCEPT_SYSCALL(nanosleep),
 
@@ -142,10 +157,14 @@ bool lockdown(Type type)
         KILL_SYSCALL(shmctl),
         KILL_SYSCALL(ptrace), // tracing
         KILL_SYSCALL(capset),
+#ifdef __NR_uselib
         KILL_SYSCALL(uselib),
+#endif
         KILL_SYSCALL(personality), // !
         KILL_SYSCALL(vhangup),
+#ifdef __NR_modify_ldt
         KILL_SYSCALL(modify_ldt), // !
+#endif
         KILL_SYSCALL(pivot_root), // !
         KILL_SYSCALL(chroot),
         KILL_SYSCALL(acct),   // !
@@ -165,7 +184,12 @@ bool lockdown(Type type)
         KILL_SYSCALL(add_key),     // kernel keyring
         KILL_SYSCALL(request_key), // kernel keyring
         KILL_SYSCALL(keyctl),      // kernel keyring
+#ifdef __NR_inotify_init
         KILL_SYSCALL(inotify_init),
+#endif
+#ifdef __NR_inotify_init1
+        KILL_SYSCALL(inotify_init1),
+#endif
         KILL_SYSCALL(inotify_add_watch),
         KILL_SYSCALL(inotify_rm_watch),
         KILL_SYSCALL(unshare),
